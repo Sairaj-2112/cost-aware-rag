@@ -1,0 +1,8 @@
+PyMuPDF
+sentence-transformers
+faiss-cpu
+numpy
+scikit-learn
+gradio
+huggingface-hub
+groq
