@@ -17,10 +17,10 @@ from src.metrics import create_metrics, save_metrics
 
 
 # ============================================================
-# 1. LOAD SYLLABUS
+# 1. LOAD DEFAULT PDF
 # ============================================================
 
-print("Loading syllabus...")
+print("Loading default syllabus...")
 
 pages = load_pdf("data/syllabus.pdf")
 
@@ -117,7 +117,116 @@ else:
 
 
 # ============================================================
-# 9. METRICS DISPLAY
+# 9. PDF PROCESSING FUNCTION
+# ============================================================
+
+def process_pdf(pdf_path):
+
+    global pages
+    global chunks
+    global embeddings
+    global index
+    global cache
+
+    if not pdf_path:
+
+        return "📚 Using the default syllabus."
+
+    try:
+
+        print()
+        print("========================================")
+        print("Processing uploaded PDF...")
+        print("========================================")
+
+        # ----------------------------------------------------
+        # Load PDF
+        # ----------------------------------------------------
+
+        pages = load_pdf(pdf_path)
+
+        print(
+            f"Uploaded PDF pages: {len(pages)}"
+        )
+
+        # ----------------------------------------------------
+        # Create chunks
+        # ----------------------------------------------------
+
+        chunks = create_chunks(pages)
+
+        print(
+            f"Uploaded PDF chunks: {len(chunks)}"
+        )
+
+        # ----------------------------------------------------
+        # Create embeddings
+        # ----------------------------------------------------
+
+        print("Creating embeddings...")
+
+        embeddings = create_embeddings(chunks)
+
+        print(
+            "Embedding shape:",
+            embeddings.shape
+        )
+
+        # ----------------------------------------------------
+        # Create FAISS index
+        # ----------------------------------------------------
+
+        print("Creating FAISS vector store...")
+
+        index = create_vector_store(
+            embeddings
+        )
+
+        # ----------------------------------------------------
+        # Clear old semantic cache
+        # ----------------------------------------------------
+
+        cache = SemanticCache(
+            threshold=0.80
+        )
+
+        cache.cache = []
+
+        cache.save_cache()
+
+        print("Old semantic cache cleared ✅")
+
+        print("New PDF RAG system ready ✅")
+
+        return f"""
+## ✅ PDF Loaded Successfully
+
+**Pages:** {len(pages)}
+
+**Chunks:** {len(chunks)}
+
+**Embeddings:** {embeddings.shape[1]} dimensions
+
+Your questions will now be answered using the **uploaded PDF**.
+"""
+
+    except Exception as e:
+
+        print("PDF processing failed ❌")
+        print("Reason:", str(e))
+
+        return f"""
+## ❌ PDF Processing Failed
+
+Something went wrong while processing the uploaded PDF.
+
+**Error:**
+`{str(e)}`
+"""
+
+
+# ============================================================
+# 10. METRICS DISPLAY
 # ============================================================
 
 def get_metrics():
@@ -153,7 +262,7 @@ def get_metrics():
 
 
 # ============================================================
-# 10. MAIN QUESTION FUNCTION
+# 11. MAIN QUESTION FUNCTION
 # ============================================================
 
 def ask_question(question):
@@ -214,11 +323,13 @@ No new LLM request was required for this query.
     # QUESTION EMBEDDING
     # ========================================================
 
-    query_embedding = create_embeddings([
-        {
-            "text": question
-        }
-    ])
+    query_embedding = create_embeddings(
+        [
+            {
+                "text": question
+            }
+        ]
+    )
 
     # ========================================================
     # FAISS RETRIEVAL
@@ -523,7 +634,7 @@ No new LLM tokens or cost were recorded.
 
 
 # ============================================================
-# 11. GRADIO UI
+# 12. GRADIO UI
 # ============================================================
 
 custom_css = """
@@ -583,7 +694,7 @@ with gr.Blocks(
 
         **Semantic Cache → RAG → Model Routing → Cost Tracking**
 
-        Ask questions from your syllabus and get grounded
+        Ask questions from any uploaded PDF and get grounded
         answers while monitoring AI usage and cost.
 
         </div>
@@ -598,12 +709,30 @@ with gr.Blocks(
         """
         ### 🔄 AI Pipeline
 
-        **📄 PDF → ✂️ Chunking → 🧠 Embeddings → 🔎 FAISS
+        **📄 Upload PDF → ✂️ Chunking → 🧠 Embeddings → 🔎 FAISS
         → ⚡ Semantic Cache → 🤖 Model Router → 💬 Answer**
         """
     )
 
     gr.Markdown("---")
+
+    # --------------------------------------------------------
+    # PDF UPLOAD
+    # --------------------------------------------------------
+
+    gr.Markdown(
+        "## 📄 Upload Your PDF"
+    )
+
+    pdf_file = gr.File(
+        label="Upload a PDF document",
+        file_types=[".pdf"],
+        type="filepath"
+    )
+
+    pdf_status = gr.Markdown(
+        "📚 Currently using the default syllabus."
+    )
 
     # --------------------------------------------------------
     # QUESTION
@@ -667,22 +796,29 @@ with gr.Blocks(
 
         | Component | Purpose |
         |---|---|
+        | 📄 **PDF Upload** | Allows users to provide their own document |
         | ⚡ **Semantic Cache** | Reuses answers for similar questions |
-        | 🔎 **FAISS Retrieval** | Finds relevant syllabus chunks |
-        | 📚 **RAG** | Grounds the LLM answer in syllabus content |
+        | 🔎 **FAISS Retrieval** | Finds relevant PDF chunks |
+        | 📚 **RAG** | Grounds the LLM answer in the uploaded PDF |
         | 🤖 **Model Router** | Selects a cheaper or stronger model |
         | 🔤 **Token Tracking** | Measures prompt and completion tokens |
         | 💰 **Cost Tracking** | Calculates estimated LLM cost |
         | 📊 **Metrics** | Tracks queries, hits, misses, tokens and cost |
 
         **Goal:** Reduce unnecessary LLM calls while maintaining
-        useful syllabus-grounded answers.
+        useful document-grounded answers.
         """
     )
 
     # ========================================================
-    # EVENTS MUST BE INSIDE BLOCKS
+    # EVENTS
     # ========================================================
+
+    pdf_file.change(
+        fn=process_pdf,
+        inputs=pdf_file,
+        outputs=pdf_status
+    )
 
     submit.click(
         fn=ask_question,
@@ -704,7 +840,7 @@ with gr.Blocks(
 
 
 # ============================================================
-# 12. LAUNCH
+# 13. LAUNCH
 # ============================================================
 
 app.launch(
